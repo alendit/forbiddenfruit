@@ -102,3 +102,16 @@ def test_overriding_instance_method():
 
     # Then I see that my object was cursed properly
     assert obj.my_method() == "Yo!"
+
+
+def test_overriding_magic_method():
+    # Given that I have a function that multiplies values
+    def notplus(a, b):
+        return a * b
+
+    # When I curse the magic method __add__ in the int class
+    curse(int, '__add__', notplus)
+
+    # I do something that may sound questionable
+    assert (2).__add__(3) == 6
+    assert 2 + 3 == 6

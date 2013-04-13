@@ -21,9 +21,81 @@ Py_ssize_t = \
 class PyObject(ctypes.Structure):
     pass
 
+
 PyObject._fields_ = [
     ('ob_refcnt', Py_ssize_t),
     ('ob_type', ctypes.POINTER(PyObject)),
+]
+
+
+class PyIntObject(PyObject):
+    pass
+
+
+PyIntObject._fields_ = PyObject._fields_ + [
+    ('ob_ival', ctypes.c_long),
+]
+
+
+class PyTypeObject(ctypes.Structure):
+    pass
+
+
+class FILE(ctypes.Structure):
+    pass
+
+
+class PyNumberMethods(ctypes.Structure):
+    _fields_ = [
+        ('nb_add',
+         ctypes.CFUNCTYPE(
+             ctypes.py_object,
+             ctypes.py_object,
+             ctypes.py_object)),
+    ]
+
+
+FILE_ptr = ctypes.POINTER(FILE)
+
+PyFile_FromFile = ctypes.pythonapi.PyFile_FromFile
+PyFile_FromFile.restype = ctypes.py_object
+PyFile_FromFile.argtypes = [FILE_ptr,
+                            ctypes.c_char_p,
+                            ctypes.c_char_p,
+                            ctypes.CFUNCTYPE(ctypes.c_int, FILE_ptr)]
+
+PyFile_AsFile = ctypes.pythonapi.PyFile_AsFile
+PyFile_AsFile.restype = FILE_ptr
+PyFile_AsFile.argtypes = [ctypes.py_object]
+
+
+PyTypeObject._fields_ = PyObject._fields_ + [
+    ('ob_size', Py_ssize_t),
+    ('tp_name', ctypes.c_char_p),
+    ('tp_basicsize', Py_ssize_t),
+    ('tp_itemsize', Py_ssize_t),
+    ('tp_dealloc', ctypes.CFUNCTYPE(None, ctypes.POINTER(PyObject))),
+    ('tp_print', ctypes.CFUNCTYPE(
+        None,
+        ctypes.py_object,
+        ctypes.POINTER(FILE),
+        ctypes.c_int)),
+    ('tp_getattr', ctypes.CFUNCTYPE(
+        ctypes.py_object,
+        ctypes.py_object,
+        ctypes.c_char_p)),
+    ('tp_getattr', ctypes.CFUNCTYPE(
+        ctypes.py_object,
+        ctypes.py_object,
+        ctypes.py_object)),
+    ('tp_compare', ctypes.CFUNCTYPE(
+        ctypes.c_int,
+        ctypes.py_object,
+        ctypes.py_object)),
+    ('tp_repr', ctypes.CFUNCTYPE(
+        ctypes.py_object,
+        ctypes.py_object)),
+    ('tp_as_number', ctypes.POINTER(PyNumberMethods)),
 ]
 
 
@@ -31,7 +103,7 @@ class SlotsProxy(PyObject):
     _fields_ = [('dict', ctypes.POINTER(PyObject))]
 
 
-def patchable_builtin(klass):
+def get_slots(klass):
     # It's important to create variables here, we want those objects alive
     # within this whole scope.
     name = klass.__name__
@@ -51,6 +123,18 @@ def patchable_builtin(klass):
         proxy_dict.dict,
     )
     return namespace[name]
+
+
+def get_magic_methods(klass, attr, value):
+    c_type_inst = PyTypeObject.from_address(id(klass))
+
+    func_class = ctypes.CFUNCTYPE(
+        ctypes.py_object,
+        ctypes.py_object,
+        ctypes.py_object)
+
+    func = func_class(value)
+    c_type_inst.tp_as_number.contents.nb_add = func
 
 
 @wraps(__builtin__.dir)
@@ -87,7 +171,10 @@ def curse(klass, attr, value, hide_from_dir=False):
       >>> "yo".hello()
       "yoyo"
     """
-    dikt = patchable_builtin(klass)
+    dikt = get_slots(klass)
+
+    if klass == int and callable(value) and attr.startswith('__'):
+        get_magic_methods(klass, attr, value)
 
     old_value = dikt.get(attr, None)
     old_name = '_c_%s' % attr   # do not use .format here, it breaks py2.{5,6}
@@ -134,5 +221,5 @@ def reverse(klass, attr):
       AttributeError: 'str' object has no attribute 'strip'
 
     """
-    dikt = patchable_builtin(klass)
+    dikt = get_slots(klass)
     del dikt[attr]
