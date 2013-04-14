@@ -125,6 +125,9 @@ def get_slots(klass):
     return namespace[name]
 
 
+__global_cache__ = defaultdict(list)
+
+
 def get_magic_methods(klass, attr, value):
     c_type_inst = PyTypeObject.from_address(id(klass))
 
@@ -134,6 +137,7 @@ def get_magic_methods(klass, attr, value):
         ctypes.py_object)
 
     func = func_class(value)
+    __global_cache__['nb_add'].append(c_type_inst.tp_as_number.contents.nb_add)
     c_type_inst.tp_as_number.contents.nb_add = func
 
 

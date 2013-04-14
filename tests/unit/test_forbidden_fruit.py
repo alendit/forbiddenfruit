@@ -114,4 +114,5 @@ def test_overriding_magic_method():
 
     # I do something that may sound questionable
     assert (2).__add__(3) == 6
-    assert 2 + 3 == 6
+    assert eval("2+3") == 6, \
+        "2+3 should equal 6, but it equals to %d" % eval("2+3")
